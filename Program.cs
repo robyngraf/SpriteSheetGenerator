@@ -28,21 +28,25 @@ foreach (var filePath in Directory.EnumerateFiles(spritesPath, "*.*", SearchOpti
     name = name.Replace(" anim", "", StringComparison.InvariantCultureIgnoreCase);
     sprites.Add(new SpriteData { Bitmap = bitmap, Name = name });
 }
-sprites = [.. sprites.OrderByDescending(b => b.Height)];
+sprites = [.. sprites.OrderByDescending(s => s.Height).ThenByDescending(s => s.Width)];
 
-// TODO: algorithm can be improved
+// TODO: algorithm can be improved - could try to fit small sprites in gaps between
+// sprite.Height and maxHeightInRow, starting with the widest
+// - but no point until I have more sprites to test it with
 
 var spriteSheetSize = 64;
-// Algorithm: first we determine the size of the sprite sheet by iteratively trying to
+// Algorithm: we determine the size of the sprite sheet by iteratively trying to
 // fit the bitmaps into a square of size 'spriteSheetSize' x 'spriteSheetSize'. If we can't fit all the bitmaps,
 // we increase the size of the sprite sheet and try again.
+// We fit as many sprites as we can into each row, then move on to the next row with
+// the remaining sprites.
+// The sprites are sorted by height, to get mostly sprites of the same size in each row.
+
 var ableToFit = true;
 do
 {
-    spriteSheetSize *= 2;
-    var currentX = 0;
-    var currentY = 0;
     ableToFit = true;
+    spriteSheetSize *= 2;
     foreach (var sprite in sprites)
     {
         if (sprite.Width > spriteSheetSize || sprite.Height > spriteSheetSize)
@@ -50,18 +54,34 @@ do
             ableToFit = false;
             break;
         }
-        if (currentX + sprite.Width > spriteSheetSize)
+    }
+    if (!ableToFit) continue;
+
+    var currentX = 0;
+    var currentY = 0;
+    ableToFit = true;
+    List<SpriteData> remainingSprites = [.. sprites];
+    while (remainingSprites.Count > 0)
+    {
+        var maxHeightInRow = 0;
+        for (int i = 0; i < remainingSprites.Count; i++)
         {
-            currentX = 0;
-            currentY += sprite.Height;
+            var sprite = remainingSprites[i];
+            if (currentX + sprite.Width > spriteSheetSize) continue;
+
+            sprite.Position = new Point(currentX, currentY);
+            currentX += sprite.Width;
+            maxHeightInRow = Math.Max(maxHeightInRow, sprite.Height);
+            remainingSprites.RemoveAt(i);
+            i--;
         }
-        if (currentY + sprite.Height > spriteSheetSize)
+        currentX = 0;
+        currentY += maxHeightInRow;
+        if (currentY > spriteSheetSize)
         {
             ableToFit = false;
             break;
         }
-        sprite.Position = new Point(currentX, currentY);
-        currentX += sprite.Width;
     }
 } while (!ableToFit);
 
