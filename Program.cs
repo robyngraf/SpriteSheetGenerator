@@ -101,7 +101,8 @@ using (var graphics = Graphics.FromImage(spriteSheet))
         }
         else
         {
-            graphics.DrawImage(sprite.Bitmap, sprite.Position);
+            // Specify the width and height here to prevent automatic scaling of the sprites
+            graphics.DrawImage(sprite.Bitmap, sprite.X, sprite.Y, sprite.Width, sprite.Height);
         }
     }
 }
