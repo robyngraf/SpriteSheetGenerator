@@ -25,22 +25,19 @@ foreach (var filePath in Directory.EnumerateFiles(spritesPath, "*.*", SearchOpti
         bitmap = new Bitmap(ms);
     }
     var name = Path.GetFileNameWithoutExtension(filePath);
+    name = name.Replace("_bw", "", StringComparison.InvariantCultureIgnoreCase);
     name = name.Replace(" bw", "", StringComparison.InvariantCultureIgnoreCase);
     name = name.Replace(" anim", "", StringComparison.InvariantCultureIgnoreCase);
     sprites.Add(new SpriteData { Bitmap = bitmap, Name = name });
 }
 sprites = [.. sprites.OrderByDescending(s => s.Height).ThenByDescending(s => s.Width)];
 
-// TODO: algorithm can be improved - could try to fit small sprites in gaps between
-// sprite.Height and maxHeightInRow, starting with the widest
-// - but no point until I have more sprites to test it with
-
 var spriteSheetSize = 64;
 // Algorithm: we determine the size of the sprite sheet by iteratively trying to
 // fit the bitmaps into a square of size 'spriteSheetSize' x 'spriteSheetSize'. If we can't fit all the bitmaps,
 // we increase the size of the sprite sheet and try again.
-// We fit as many sprites as we can into each row, then move on to the next row with
-// the remaining sprites.
+// We fit as many sprites as we can into each row (iteratively filling vertical gaps in the row),
+// then move on to the next row with the remaining sprites.
 // The sprites are sorted by height, to get mostly sprites of the same size in each row.
 
 var ableToFit = true;
@@ -58,32 +55,34 @@ do
     }
     if (!ableToFit) continue;
 
-    var currentX = 0;
-    var currentY = 0;
-    ableToFit = true;
     List<SpriteData> remainingSprites = [.. sprites];
-    while (remainingSprites.Count > 0)
-    {
-        var maxHeightInRow = 0;
-        for (int i = 0; i < remainingSprites.Count; i++)
-        {
-            var sprite = remainingSprites[i];
-            if (currentX + sprite.Width > spriteSheetSize) continue;
 
-            sprite.Position = new Point(currentX, currentY);
-            currentX += sprite.Width;
-            maxHeightInRow = Math.Max(maxHeightInRow, sprite.Height);
-            remainingSprites.RemoveAt(i);
-            i--;
-        }
-        currentX = 0;
-        currentY += maxHeightInRow;
-        if (currentY > spriteSheetSize)
+    void FitInArea(int x, int y, int width, int height)
+    {
+        var sprite = remainingSprites.FirstOrDefault(s => s.Width <= width && s.Height <= height);
+        if (sprite is null) return;
+        remainingSprites.Remove(sprite);
+        sprite.Position = new Point(x, y);
+        if (x == 0)
         {
-            ableToFit = false;
-            break;
+            // Fill the remaining area on the right of this row
+            FitInArea(sprite.Width, y, width - sprite.Width, sprite.Height);
+            // Fill the remaining area below this row
+            FitInArea(0, y + sprite.Height, width, height - sprite.Height);
+        }
+        else
+        {
+            // Fill the remaining area on the right of this row
+            FitInArea(x + sprite.Width, y, width - sprite.Width, height);
+            // Fill the gap between this sprite and the next row
+            FitInArea(x, y + sprite.Height, sprite.Width, height - sprite.Height);
         }
     }
+
+    // Try to fit sprites in the entire sprite sheet
+    FitInArea(0, 0, spriteSheetSize, spriteSheetSize);
+
+    ableToFit = remainingSprites.Count == 0;
 } while (!ableToFit);
 
 // After that, we create a new bitmap of the determined size and draw all the bitmaps onto it using the data generated in the previous stage.
@@ -94,16 +93,8 @@ using (var graphics = Graphics.FromImage(spriteSheet))
     foreach (var sprite in sprites)
     {
         Console.WriteLine($"{sprite.Name}: {sprite.Size} @ {sprite.Position}");
-        if (sprite.Name == "terrain")
-        {
-            //foreach (var prop in sprite.Bitmap.PropertyItems) { Console.WriteLine($"{prop.Id:X} {Encoding.UTF8.GetString(prop.Value)}"); }
-            graphics.DrawImage(sprite.Bitmap, sprite.X, sprite.Y + sprite.Height, sprite.Width, sprite.Height);
-        }
-        else
-        {
-            // Specify the width and height here to prevent automatic scaling of the sprites
-            graphics.DrawImage(sprite.Bitmap, sprite.X, sprite.Y, sprite.Width, sprite.Height);
-        }
+        // Specify the width and height here to prevent automatic scaling/flipping/whatever of the sprites
+        graphics.DrawImage(sprite.Bitmap, sprite.X, sprite.Y, sprite.Width, sprite.Height);
     }
 }
 
