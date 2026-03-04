@@ -31,7 +31,8 @@ foreach (var filePath in Directory.EnumerateFiles(spritesPath, "*.*", SearchOpti
     sprites.Add(new SpriteData { Bitmap = bitmap, Name = name });
 }
 sprites = [.. sprites.OrderByDescending(s => s.Height).ThenByDescending(s => s.Width).ThenBy(s => s.Name)];
-var spriteSheetSize = 64;
+var largestDimension = sprites.Max(s => Math.Max(s.Width, s.Height));
+var spriteSheetSize = (int)Math.Pow(2, Math.Ceiling(Math.Log(largestDimension, 2)));
 // Algorithm: we determine the size of the sprite sheet by iteratively trying to
 // fit the bitmaps into a square of size 'spriteSheetSize' x 'spriteSheetSize'.
 // If we can't fit all the bitmaps,
@@ -41,28 +42,16 @@ var spriteSheetSize = 64;
 // (the sprite, the row to its right, and the area below that row),
 // but also iteratively merge adjacent empty areas when possible.
 
-// The sprites are sorted by height and areas are sorted by size and Y position,
+// The tallest sprites are placed first and areas are selected by size and Y position,
 // to get mostly sprites of the same size in each row & also to not fill a row with
-// all the small sprites before we know whether there are gaps around the
+// all the small sprites before we have merged any gaps around the
 // big sprites they could fit into.
 
-var ableToFit = true;
+bool ableToFit;
 do
 {
-    ableToFit = true;
-    spriteSheetSize *= 2;
-    foreach (var sprite in sprites)
-    {
-        if (sprite.Width > spriteSheetSize || sprite.Height > spriteSheetSize)
-        {
-            ableToFit = false;
-            break;
-        }
-    }
-    if (!ableToFit) continue;
-
-    List<SpriteData> remainingSprites = [.. sprites];
-    List<Rectangle> remainingAreas = [new Rectangle(0,0,spriteSheetSize, spriteSheetSize)];
+    Queue<SpriteData> remainingSprites = new(sprites);
+    HashSet<Rectangle> remainingAreas = [new Rectangle(0,0,spriteSheetSize, spriteSheetSize)];
 
     void AddOrMergeRect(Rectangle rect)
     {
@@ -71,28 +60,20 @@ do
             Rectangle? newRect = null;
             if (a.X == rect.X && a.Width == rect.Width)
             {
-                if (a.Y == rect.Y + rect.Height)
-                { // Merge with area above
+                if (a.Y == rect.Y + rect.Height) // Merge with area above
                     newRect = new Rectangle(a.X, rect.Y, a.Width, a.Height + rect.Height);
-                }
-                else if (a.Y + a.Height == rect.Y)
-                { // Merge with area below
+                else if (a.Y + a.Height == rect.Y) // Merge with area below
                     newRect = new Rectangle(a.X, a.Y, a.Width, a.Height + rect.Height);
-                }
             }
             else if (a.Y == rect.Y && a.Height == rect.Height)
             {
-                if (a.X == rect.X + rect.Width)
-                { // Merge with area on the left
+                if (a.X == rect.X + rect.Width) // Merge with area on the left
                     newRect = new Rectangle(rect.X, a.Y, a.Width + rect.Width, a.Height);
-                }
-                else if (a.X + a.Width == rect.X)
-                { // Merge with area on the right
+                else if (a.X + a.Width == rect.X) // Merge with area on the right
                     newRect = new Rectangle(a.X, a.Y, a.Width + rect.Width, a.Height);
-                }
             }
             if (newRect is not null)
-            { // try to merge the newly merged rect also
+            { // Iteratively try to merge the newly merged rect also
                 remainingAreas.Remove(a);
                 AddOrMergeRect(newRect.Value);
                 return;
@@ -100,31 +81,33 @@ do
         }
         remainingAreas.Add(rect);
     }
-
-    void PutASpriteInArea(Rectangle a)
-    {
-        var sprite = remainingSprites.FirstOrDefault(s => s.Width <= a.Width && s.Height <= a.Height);
-        if (sprite is null) return;
-        remainingSprites.Remove(sprite);
-        sprite.Position = a.Location;
-        // Remember the remaining area on the right for later
-        AddOrMergeRect(new(a.X + sprite.Width, a.Y, a.Width - sprite.Width, sprite.Height));
-        // Remember the remaining area below for later
-        AddOrMergeRect(new(a.X, a.Y + sprite.Height, a.Width, a.Height - sprite.Height));
-    }
-
     // Try to fit sprites in the sprite sheet
     while (remainingAreas.Count > 0 && remainingSprites.Count > 0)
     {
-        var largestSpriteHeight = remainingSprites.Max(s => s.Height);
-        var selection = remainingAreas.Where(a => a.Height >= largestSpriteHeight).ToList();
-        if (selection.Count == 0) break; // No area tall enough, give up
+        // Largest sprite
+        var sprite = remainingSprites.Dequeue();
+
+        // Select top-leftmost area the sprite fits into
+        var selection = remainingAreas
+            .Where(a => a.Height >= sprite.Height && a.Width >= sprite.Width)
+            .ToList();
+        if (selection.Count == 0) break; // No area big enough, give up
         var area = selection.OrderBy(a => a.Y).ThenBy(a => a.X).First();
+
+        // Place the sprite in the area
+        sprite.Position = area.Location;
+
+        // Area is now occupied
         remainingAreas.Remove(area);
-        PutASpriteInArea(area);
+
+        // Remember the remaining areas on the right and below for later
+        AddOrMergeRect(new(area.X + sprite.Width, area.Y, area.Width - sprite.Width, sprite.Height));
+        AddOrMergeRect(new(area.X, area.Y + sprite.Height, area.Width, area.Height - sprite.Height));
     }
 
     ableToFit = remainingSprites.Count == 0;
+    if (!ableToFit)
+        spriteSheetSize *= 2;
 } while (!ableToFit);
 
 // After that, we create a new bitmap of the determined size and draw all the bitmaps onto it using the data generated in the previous stage.
