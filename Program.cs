@@ -31,8 +31,6 @@ foreach (var filePath in Directory.EnumerateFiles(spritesPath, "*.*", SearchOpti
     sprites.Add(new SpriteData { Bitmap = bitmap, Name = name });
 }
 sprites = [.. sprites.OrderByDescending(s => s.Height).ThenByDescending(s => s.Width).ThenBy(s => s.Name)];
-var smallestSpriteHeight = sprites.Min(s => s.Height);
-var secondSmallestSpriteHeight = sprites.Where(s => s.Height > smallestSpriteHeight).Min(s => s.Height);
 var spriteSheetSize = 64;
 // Algorithm: we determine the size of the sprite sheet by iteratively trying to
 // fit the bitmaps into a square of size 'spriteSheetSize' x 'spriteSheetSize'.
@@ -43,7 +41,7 @@ var spriteSheetSize = 64;
 // (the sprite, the row to its right, and the area below that row),
 // but also iteratively merge adjacent empty areas when possible.
 
-// The sprites are sorted by height and areas are sorted by Y position,
+// The sprites are sorted by height and areas are sorted by size and Y position,
 // to get mostly sprites of the same size in each row & also to not fill a row with
 // all the small sprites before we know whether there are gaps around the
 // big sprites they could fit into.
@@ -64,80 +62,66 @@ do
     if (!ableToFit) continue;
 
     List<SpriteData> remainingSprites = [.. sprites];
-    List<Rectangle> areasToFill = [new Rectangle(0,0,spriteSheetSize, spriteSheetSize)];
+    List<Rectangle> remainingAreas = [new Rectangle(0,0,spriteSheetSize, spriteSheetSize)];
 
-    void AddOrMergeRect(int x, int y, int width, int height)
+    void AddOrMergeRect(Rectangle rect)
     {
-        var rect = new Rectangle(x, y, width, height);
-        foreach (var a in areasToFill.OrderBy(a => a.Y).ThenBy(a => a.X))
+        foreach (var a in remainingAreas.OrderBy(a => a.Y).ThenBy(a => a.X))
         {
             Rectangle? newRect = null;
-            if (a.Y == rect.Y && a.Height == rect.Height)
-            {
-                if (a.X == rect.X + rect.Width)
-                {
-                    // Merge with area on the left
-                    newRect = new Rectangle(rect.X, a.Y, a.Width + rect.Width, a.Height);
-                }
-                else if (a.X + a.Width == rect.X)
-                {
-                    // Merge with area on the right
-                    newRect = new Rectangle(a.X, a.Y, a.Width + rect.Width, a.Height);
-                }
-            }
-            else if (a.X == rect.X && a.Width == rect.Width)
+            if (a.X == rect.X && a.Width == rect.Width)
             {
                 if (a.Y == rect.Y + rect.Height)
-                {
-                    // Merge with area above
+                { // Merge with area above
                     newRect = new Rectangle(a.X, rect.Y, a.Width, a.Height + rect.Height);
                 }
                 else if (a.Y + a.Height == rect.Y)
-                {
-                    // Merge with area below
+                { // Merge with area below
                     newRect = new Rectangle(a.X, a.Y, a.Width, a.Height + rect.Height);
                 }
             }
-            if (newRect is not null)
+            else if (a.Y == rect.Y && a.Height == rect.Height)
             {
-                areasToFill.Remove(a);
-                // try to merge the newly merged rect also
-                var r = newRect.Value;
-                AddOrMergeRect(r.X, r.Y, r.Width, r.Height);
+                if (a.X == rect.X + rect.Width)
+                { // Merge with area on the left
+                    newRect = new Rectangle(rect.X, a.Y, a.Width + rect.Width, a.Height);
+                }
+                else if (a.X + a.Width == rect.X)
+                { // Merge with area on the right
+                    newRect = new Rectangle(a.X, a.Y, a.Width + rect.Width, a.Height);
+                }
+            }
+            if (newRect is not null)
+            { // try to merge the newly merged rect also
+                remainingAreas.Remove(a);
+                AddOrMergeRect(newRect.Value);
                 return;
             }
         }
-        areasToFill.Add(rect);
+        remainingAreas.Add(rect);
     }
 
-    void FitInRect(Rectangle r)
+    void PutASpriteInArea(Rectangle a)
     {
-        var (x, y, width, height) = (r.X, r.Y, r.Width, r.Height);
-        var sprite = remainingSprites.FirstOrDefault(s => s.Width <= width && s.Height <= height);
+        var sprite = remainingSprites.FirstOrDefault(s => s.Width <= a.Width && s.Height <= a.Height);
         if (sprite is null) return;
         remainingSprites.Remove(sprite);
-        sprite.Position = new Point(x, y);
-        // Fill the remaining area on the right
-        AddOrMergeRect(x + sprite.Width, y, width - sprite.Width, sprite.Height);
-        // Fill the remaining area below
-        AddOrMergeRect(x, y + sprite.Height, width, height - sprite.Height);
+        sprite.Position = a.Location;
+        // Remember the remaining area on the right for later
+        AddOrMergeRect(new(a.X + sprite.Width, a.Y, a.Width - sprite.Width, sprite.Height));
+        // Remember the remaining area below for later
+        AddOrMergeRect(new(a.X, a.Y + sprite.Height, a.Width, a.Height - sprite.Height));
     }
 
     // Try to fit sprites in the sprite sheet
-    while (areasToFill.Count > 0 && remainingSprites.Count > 0)
+    while (remainingAreas.Count > 0 && remainingSprites.Count > 0)
     {
-        IEnumerable<Rectangle> selection = areasToFill;
-        if (remainingSprites.Any(s => s.Height > secondSmallestSpriteHeight))
-        {
-            selection = selection.Where(a => a.Height > secondSmallestSpriteHeight);
-        }
-        else if (remainingSprites.Any(s => s.Height > smallestSpriteHeight))
-        {
-            selection = selection.Where(a => a.Height > smallestSpriteHeight);
-        }
+        var largestSpriteHeight = remainingSprites.Max(s => s.Height);
+        var selection = remainingAreas.Where(a => a.Height >= largestSpriteHeight).ToList();
+        if (selection.Count == 0) break; // No area tall enough, give up
         var area = selection.OrderBy(a => a.Y).ThenBy(a => a.X).First();
-        areasToFill.Remove(area);
-        FitInRect(area);
+        remainingAreas.Remove(area);
+        PutASpriteInArea(area);
     }
 
     ableToFit = remainingSprites.Count == 0;
