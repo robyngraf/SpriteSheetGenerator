@@ -23,11 +23,21 @@ foreach (var filePath in Directory.EnumerateFiles(spritesPath, "*.*", SearchOpti
         magickImage.Write(ms, MagickFormat.Bmp);
         bitmap = new Bitmap(ms);
     }
-    var name = Path.GetFileNameWithoutExtension(filePath);
-    name = name.Replace("_bw", "", StringComparison.InvariantCultureIgnoreCase);
+    var name = Path.GetFileNameWithoutExtension(filePath).Replace("_", " ");
+    // remove "_BW" from filename
     name = name.Replace(" bw", "", StringComparison.InvariantCultureIgnoreCase);
-    name = name.Replace(" anim", "", StringComparison.InvariantCultureIgnoreCase);
-    sprites.Add(new SpriteData { Bitmap = bitmap, Name = name });
+    // Determine frame count from filename, e.g. "explosion anim 5" would have 5 frames
+    var frameCount = 1;
+    var animIndex = name.LastIndexOf(" anim", StringComparison.InvariantCultureIgnoreCase);
+    if (animIndex != -1)
+    {
+        var frameCountStr = name[(animIndex + " anim".Length)..].Trim();
+        if (int.TryParse(frameCountStr, out var fc))
+            frameCount = fc;
+        // Remove the " anim X" part from the name
+        name = name[..animIndex];
+    }
+    sprites.Add(new SpriteData { Bitmap = bitmap, Name = name, FrameCount = frameCount });
 }
 sprites = [.. sprites.OrderByDescending(s => s.Height).ThenByDescending(s => s.Width).ThenBy(s => s.Name)];
 var largestDimension = sprites.Max(s => Math.Max(s.Width, s.Height));
@@ -132,19 +142,20 @@ using MagickImage image = new(ms2);
 image.Format = MagickFormat.Gif;
 image.Write(outputPath);
 var bytes = File.ReadAllBytes(outputPath);
-var fileString = "        const spriteSheetUrl = \"data:image/gif;base64," + Convert.ToBase64String(bytes).TrimEnd('=') + "\";";
+var fileString = "const spriteSheetUrl = \"data:image/gif;base64," + Convert.ToBase64String(bytes).TrimEnd('=') + "\";";
 
 // Save the metadata of the sprites in a text file in JSON format, which can be used later to extract the individual sprites from the sprite sheet.
 var metadata = sprites.ToDictionary(s => s.Name, s => new
 {
     x = s.Position.X,
     y = s.Position.Y,
-    w = s.Width,
-    h = s.Height
+    w = s.FrameWidth,
+    h = s.Height,
+    f = s.FrameCount
 });
 
 var json = JsonSerializer.Serialize(metadata);
 
-var metadataString = "        const spriteSheetLocations = " + json + ";";
+var metadataString = "const spriteSheetLocations = " + json + ";";
 File.WriteAllText(codeFilePath, fileString + "\r\n" + metadataString,  Encoding.UTF8);
 Console.WriteLine($"Wrote data for {sprites.Count} sprites to {codeFilePath}");
