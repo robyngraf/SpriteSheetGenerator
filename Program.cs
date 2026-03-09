@@ -6,8 +6,7 @@ using System.Text.Json;
 
 string spritesPath = @"F:\Metagame\dev\sprites";
 string outputPath = @"F:\Metagame\dev\spritesheet.gif";
-string outputPathB64 = @"F:\Metagame\dev\spritesheet_b64.txt";
-var metadataPath = @"F:\Metagame\dev\spritesheet_metadata.txt";
+var codeFilePath = @"F:\Metagame\dev\spritesheet_as_code.txt";
 
 List<SpriteData> sprites = [];
 foreach (var filePath in Directory.EnumerateFiles(spritesPath, "*.*", SearchOption.AllDirectories))
@@ -133,8 +132,7 @@ using MagickImage image = new(ms2);
 image.Format = MagickFormat.Gif;
 image.Write(outputPath);
 var bytes = File.ReadAllBytes(outputPath);
-var fileString = "data:image/gif;base64," + Convert.ToBase64String(bytes).TrimEnd('=');
-File.WriteAllText(outputPathB64, fileString, Encoding.UTF8);
+var fileString = "        const spriteSheetUrl = \"data:image/gif;base64," + Convert.ToBase64String(bytes).TrimEnd('=') + "\";";
 
 // Save the metadata of the sprites in a text file in JSON format, which can be used later to extract the individual sprites from the sprite sheet.
 var metadata = sprites.ToDictionary(s => s.Name, s => new
@@ -146,5 +144,7 @@ var metadata = sprites.ToDictionary(s => s.Name, s => new
 });
 
 var json = JsonSerializer.Serialize(metadata);
-File.WriteAllText(metadataPath, json, Encoding.UTF8);
-Console.WriteLine($"Wrote metadata for {sprites.Count} sprites to {metadataPath}");
+
+var metadataString = "        const spriteSheetLocations = " + json + ";";
+File.WriteAllText(codeFilePath, fileString + "\r\n" + metadataString,  Encoding.UTF8);
+Console.WriteLine($"Wrote data for {sprites.Count} sprites to {codeFilePath}");
