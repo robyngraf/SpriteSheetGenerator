@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json;
 
 string spritesPath = @"F:\Metagame\dev\sprites";
-string outputPath = @"F:\Metagame\dev\spritesheet.gif";
+string outputPath = @"F:\Metagame\dev\spritesheet.png";
 var codeFilePath = @"F:\Metagame\dev\spritesheet_as_code.txt";
 
 List<SpriteData> sprites = [];
@@ -121,14 +121,28 @@ do
 
 // After that, we create a new bitmap of the determined size and draw all the bitmaps onto it using the data generated in the previous stage.
 
-var spriteSheet = new Bitmap(spriteSheetSize, spriteSheetSize);
+var spriteSheet = new Bitmap(spriteSheetSize, spriteSheetSize, PixelFormat.Format24bppRgb);
+
+ColorMatrix colorMatrix = new(
+[
+    [1, 0, 0, 0, 0], // Red: Keep R
+    [0, 0, 0, 0, 0], // Green: Discard G
+    [0, 0, 0, 0, 0], // Blue: Discard B
+    [0,-1, 0, 0, 0], // Alpha: Convert alpha to negative G
+    [0, 1, 0, 1, 1]  // W: Make not transparent and add 1 to G
+]);
+
+// Create ImageAttributes and set the ColorMatrix
+ImageAttributes attributes = new();
+attributes.SetColorMatrix(colorMatrix);
+
 using (var graphics = Graphics.FromImage(spriteSheet))
 {
     foreach (var sprite in sprites)
     {
         Console.WriteLine($"{sprite.Name}: {sprite.Size} @ {sprite.Position}");
         // Specify the width and height here to prevent automatic scaling/flipping/whatever of the sprites
-        graphics.DrawImage(sprite.Bitmap, sprite.X, sprite.Y, sprite.Width, sprite.Height);
+        graphics.DrawImage(sprite.Bitmap, new(sprite.X, sprite.Y, sprite.Width, sprite.Height), 0, 0, sprite.Width, sprite.Height, GraphicsUnit.Pixel, attributes);
     }
 }
 
@@ -137,12 +151,13 @@ using MemoryStream ms2 = new();
 spriteSheet.Save(ms2, ImageFormat.Png);
 ms2.Position = 0;
 
-// 2. Read into ImageMagick
+// 2. Read into ImageMagick & convert to 2BP indexed PNG (palette will automatically be black, red and green)
 using MagickImage image = new(ms2);
-image.Format = MagickFormat.Gif;
+image.Format = MagickFormat.Png;
+image.ColorType = ColorType.Palette;
 image.Write(outputPath);
 var bytes = File.ReadAllBytes(outputPath);
-var fileString = "const spriteSheetUrl = \"data:image/gif;base64," + Convert.ToBase64String(bytes).TrimEnd('=') + "\";";
+var fileString = "const spriteSheetUrl = \"data:image/png;base64," + Convert.ToBase64String(bytes).TrimEnd('=') + "\";";
 
 // Save the metadata of the sprites in a text file in JSON format, which can be used later to extract the individual sprites from the sprite sheet.
 var metadata = sprites.ToDictionary(s => s.Name, s => new
