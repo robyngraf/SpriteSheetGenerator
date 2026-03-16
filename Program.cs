@@ -128,8 +128,8 @@ ColorMatrix colorMatrix = new(
     [1, 0, 0, 0, 0], // Red: Keep R
     [0, 0, 0, 0, 0], // Green: Discard G
     [0, 0, 0, 0, 0], // Blue: Discard B
-    [0,-1, 0, 0, 0], // Alpha: Convert alpha to negative G
-    [0, 1, 0, 1, 1]  // W: Make not transparent and add 1 to G
+    [0, 1, 0, 0, 0], // Alpha: Convert alpha to G
+    [0, 0, 0, 1, 1]  // W: Make not transparent
 ]);
 
 // Create ImageAttributes and set the ColorMatrix
