@@ -3,7 +3,7 @@
 class SpriteData
 {
     public int Height => Bitmap.Height;
-    public int FrameWidth => Bitmap.Width / FrameCount;
+    public int FrameWidth => Bitmap.Width / (FrameCount ?? 1);
     public int Width => Bitmap.Width;
     public Size Size => new(Width, Height);
     public int X => Position.X;
@@ -12,5 +12,5 @@ class SpriteData
     public required Bitmap Bitmap { get; set; }
     public Point Position { get; set; }
     public required string Name { get; set; }
-    public int FrameCount { get; set; } = 1;
+    public int? FrameCount { get; set; } = 1;
 }

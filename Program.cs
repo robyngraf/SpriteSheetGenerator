@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 string spritesPath = @"F:\Metagame\dev\sprites";
 string outputPath = @"F:\Metagame\dev\spritesheet.png";
@@ -27,7 +28,7 @@ foreach (var filePath in Directory.EnumerateFiles(spritesPath, "*.*", SearchOpti
     // remove "_BW" from filename
     name = name.Replace(" bw", "", StringComparison.InvariantCultureIgnoreCase);
     // Determine frame count from filename, e.g. "explosion anim 5" would have 5 frames
-    var frameCount = 1;
+    int? frameCount = null;
     var animIndex = name.LastIndexOf(" anim", StringComparison.InvariantCultureIgnoreCase);
     if (animIndex != -1)
     {
@@ -151,7 +152,7 @@ using MemoryStream ms2 = new();
 spriteSheet.Save(ms2, ImageFormat.Png);
 ms2.Position = 0;
 
-// 2. Read into ImageMagick & convert to 2BP indexed PNG (palette will automatically be black, red and green)
+// 2. Read into ImageMagick & convert to 2BP indexed PNG (palette will automatically be black, green and yellow)
 using MagickImage image = new(ms2);
 image.Format = MagickFormat.Png;
 image.ColorType = ColorType.Palette;
@@ -160,16 +161,9 @@ var bytes = File.ReadAllBytes(outputPath);
 var fileString = "const spriteSheetUrl = \"data:image/png;base64," + Convert.ToBase64String(bytes).TrimEnd('=') + "\";";
 
 // Save the metadata of the sprites in a text file in JSON format, which can be used later to extract the individual sprites from the sprite sheet.
-var metadata = sprites.ToDictionary(s => s.Name, s => new
-{
-    x = s.Position.X,
-    y = s.Position.Y,
-    w = s.FrameWidth,
-    h = s.Height,
-    f = s.FrameCount
-});
+var metadata = sprites.ToDictionary(s => s.Name, s => new { x = s.Position.X, y = s.Position.Y, w = s.FrameWidth, h = s.Height, f = s.FrameCount });
 
-var json = JsonSerializer.Serialize(metadata);
+var json = JsonSerializer.Serialize(metadata, new JsonSerializerOptions() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
 
 var metadataString = "const spriteSheetLocations = " + json + ";";
 File.WriteAllText(codeFilePath, fileString + "\r\n" + metadataString,  Encoding.UTF8);
